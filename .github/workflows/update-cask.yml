@@ -1,0 +1,95 @@
+name: Update Cask
+
+on:
+  repository_dispatch:
+    types: [release-published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to update to (leave empty for latest)'
+        required: false
+        type: string
+
+jobs:
+  update:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Get Release Info
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            VERSION="${{ inputs.version }}"
+          elif [ -n "${{ github.event.client_payload.version }}" ]; then
+            VERSION="${{ github.event.client_payload.version }}"
+          else
+            # Get latest non-draft release
+            VERSION=$(gh release list --repo Neo552/TensorPM-Releases --limit 10 --json tagName,isDraft \
+              --jq '[.[] | select(.isDraft == false)] | .[0].tagName' | sed 's/^v//')
+          fi
+
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "Updating to version: $VERSION"
+
+      - name: Download DMG and Calculate SHA256
+        id: sha
+        run: |
+          VERSION="${{ steps.release.outputs.VERSION }}"
+          DMG_URL="https://github.com/Neo552/TensorPM-Releases/releases/download/v${VERSION}/TensorPM-macOS.dmg"
+
+          echo "Downloading: $DMG_URL"
+          curl -L -o tensorpm.dmg "$DMG_URL"
+
+          SHA256=$(shasum -a 256 tensorpm.dmg | cut -d' ' -f1)
+          echo "SHA256=$SHA256" >> $GITHUB_OUTPUT
+          echo "SHA256: $SHA256"
+
+          rm tensorpm.dmg
+
+      - name: Update Cask Formula
+        run: |
+          VERSION="${{ steps.release.outputs.VERSION }}"
+          SHA256="${{ steps.sha.outputs.SHA256 }}"
+
+          # Get current version from cask
+          CURRENT_VERSION=$(grep 'version "' Casks/tensorpm.rb | sed 's/.*version "\([^"]*\)".*/\1/')
+
+          if [ "$CURRENT_VERSION" = "$VERSION" ]; then
+            echo "Already at version $VERSION, checking SHA256..."
+            CURRENT_SHA=$(grep 'sha256 "' Casks/tensorpm.rb | sed 's/.*sha256 "\([^"]*\)".*/\1/')
+            if [ "$CURRENT_SHA" = "$SHA256" ]; then
+              echo "SHA256 also matches, no update needed"
+              echo "SKIP=true" >> $GITHUB_ENV
+              exit 0
+            fi
+          fi
+
+          echo "Updating from $CURRENT_VERSION to $VERSION"
+
+          # Update version
+          sed -i '' "s/version \"[^\"]*\"/version \"$VERSION\"/" Casks/tensorpm.rb
+
+          # Update SHA256
+          sed -i '' "s/sha256 \"[^\"]*\"/sha256 \"$SHA256\"/" Casks/tensorpm.rb
+
+          echo "Updated Cask:"
+          head -10 Casks/tensorpm.rb
+
+      - name: Commit and Push
+        if: env.SKIP != 'true'
+        run: |
+          VERSION="${{ steps.release.outputs.VERSION }}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add Casks/tensorpm.rb
+          git diff --cached --quiet && echo "No changes to commit" && exit 0
+
+          git commit -m "Update TensorPM to v${VERSION}"
+          git push
