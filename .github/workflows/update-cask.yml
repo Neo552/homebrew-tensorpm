@@ -9,6 +9,12 @@ on:
         description: 'Version to update to (leave empty for latest)'
         required: false
         type: string
+  schedule:
+    # Poll for new TensorPM releases every 30 minutes
+    - cron: '*/30 * * * *'
+
+permissions:
+  contents: write
 
 jobs:
   update:
@@ -28,7 +34,8 @@ jobs:
           elif [ -n "${{ github.event.client_payload.version }}" ]; then
             VERSION="${{ github.event.client_payload.version }}"
           else
-            # Get latest non-draft release
+            # Most recent non-draft release (includes pre-releases — there is no
+            # stable channel yet, so the newest tag is what users should get).
             VERSION=$(gh release list --repo Neo552/TensorPM-Releases --limit 10 --json tagName,isDraft \
               --jq '[.[] | select(.isDraft == false)] | .[0].tagName' | sed 's/^v//')
           fi
