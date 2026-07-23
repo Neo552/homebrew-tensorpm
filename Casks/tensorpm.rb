@@ -1,6 +1,6 @@
 cask "tensorpm" do
-  version "1.25.5"
-  sha256 "8893fd2785288b2a77bccf335edc89de16a5835df454c40eaf8e5a63b2bd3808"
+  version "1.25.6"
+  sha256 "009d5c5fc86f92e4898fe2c8f6c383c2034368b8ed162a79416b552214f62448"
 
   url "https://github.com/Neo552/TensorPM-Releases/releases/download/v#{version}/TensorPM-macOS.dmg",
       verified: "github.com/Neo552/TensorPM-Releases/"
